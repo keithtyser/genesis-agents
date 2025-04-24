@@ -14,6 +14,7 @@ from sandbox.context        import ContextManager
 from sandbox.commands       import execute as exec_cmds
 from sandbox.world          import WorldState
 from sandbox.bus            import Bus
+from sandbox.breeding import BreedingManager
 
 class Scheduler:
     def __init__(
@@ -27,6 +28,7 @@ class Scheduler:
         self.bus    = bus
 
         self.ctx = ContextManager(world)
+        self.breeder = BreedingManager(world, bus, self)
         self._cursor = itertools.cycle(self.agents)
 
     # -------------------------------------------------- #
@@ -51,6 +53,13 @@ class Scheduler:
         if self.world.tick % 10 == 0:
             self.world.save("world.json")
             print(f"[{dt.datetime.now().strftime('%H:%M:%S')}] tick={self.world.tick} saved.")
+        await self.breeder.step()
+        # Check if new agents were added and refresh cursor to include them immediately after current agent
+        import itertools
+        self._cursor = itertools.cycle(self.agents)
+        # Move cursor to the agent after the current one to ensure new agents are included soon
+        for _ in range(self.agents.index(agent) + 1):
+            next(self._cursor)
 
     # -------------------------------------------------- #
     async def loop(self, max_ticks: int | None = None):
