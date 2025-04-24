@@ -18,85 +18,79 @@ class BaseAgent:
         system_msg: str,
         temperature: float = 0.8,
         *,
-        bus=None,                # will be Bus instance after Task 1
-        mem_mgr=None,            # MemoryManager after Task 6
+        bus=None,                # sandbox.bus.Bus | None
+        mem_mgr=None,            # sandbox.memory_manager.MemoryManager | None
     ):
-        self.name = name
-        self.system_msg = system_msg
-        self.temperature = temperature
-        self.bus = bus
+        self.name         = name
+        self.system_msg   = system_msg
+        self.temperature  = temperature
+
+        self.bus     = bus
         self.mem_mgr = mem_mgr
 
-        self._last_prompt: List[Message] | None = None
-        self._last_reply: str | None = None
+        # debug introspection
+        self._last_prompt: Optional[List[Message]] = None
+        self._last_reply:  Optional[str]           = None
 
     # -------------------------------------------------- #
     async def think(
         self,
-        world,                        # WILL be WorldState – unused for now
-        recent: List[Message],
+        world,                       # sandbox.world.WorldState
+        context_mgr,                 # sandbox.context.ContextManager
     ) -> Message:
         """
-        Produce one assistant reply based on recent conversation.
-
-        Parameters
-        ----------
-        world   – placeholder; gives access to locations/resources in future
-        recent  – list of the most recent chat messages (dicts with role/name/content)
+        Produce one assistant message.
 
         Returns
         -------
-        Message dict ready to drop into chat history.
+        dict with keys: role, name, content, ts
         """
-
-        # 1. optional memory recall (Task 6 will fill this)
+        # 1) MEMORY RECALL BLOCK
         mem_block = ""
         if self.mem_mgr:
-            recalls = self.mem_mgr.recall(self.name, recent[-1]["content"] if recent else "")
+            last_raw = context_mgr.recent_messages[-1]["content"] if context_mgr.recent_messages else ""
+            recalls  = self.mem_mgr.recall(self.name, last_raw)
             if recalls:
-                bullets = "\n".join("• " + r for r in recalls)
+                bullets   = "\n".join("• " + r for r in recalls)
                 mem_block = "[Memory recall]\n" + bullets
 
-        # 2. build prompt
-        prompt: List[Message] = [{"role": "system", "content": self.system_msg}]
-        if mem_block:
-            prompt.append({"role": "system", "name": "Memory", "content": mem_block})
-        prompt.extend(recent)
+        # 2) BUILD PROMPT (ContextManager inserts summary + recents)
+        prompt = context_mgr.build_prompt(
+            system_msg=self.system_msg,
+            memory_block=mem_block,
+        )
+        self._last_prompt = prompt
 
-        self._last_prompt = prompt  # stash for debug
-
-        # 3. call LLM
+        # 3) CALL LLM
         reply_text = await llm.chat(
             prompt,
             temperature=self.temperature,
             max_tokens=256,
         )
-
         self._last_reply = reply_text
 
-        # 4. craft message
+        # 4) FORM MESSAGE OBJECT
         msg: Message = {
-            "role": "assistant",
-            "name": self.name,
+            "role":    "assistant",
+            "name":    self.name,
             "content": reply_text,
-            "ts": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "ts":      dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
         }
 
-        # 5. persist to memory store (noop until Task 6)
+        # 5) PERSIST TO MEMORY
         if self.mem_mgr:
             self.mem_mgr.store(self.name, reply_text)
 
-        # 6. publish to bus if present
+        # 6) PUBLISH ON BUS
         if self.bus:
-            # non-blocking; if bus.publish is async, await it
             pub = self.bus.publish("chat", msg)
             if asyncio.iscoroutine(pub):
-                await pub
+                await pub  # handle async bus
 
         return msg
 
     # -------------------------------------------------- #
-    # Simple helpers for manual inspection
+    # Debug helpers
     # -------------------------------------------------- #
     @property
     def last_prompt(self) -> Optional[List[Message]]:
