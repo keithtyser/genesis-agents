@@ -90,4 +90,24 @@ async def build_default_scheduler():
                       bus=bus, mem_mgr=memmgr)
 
     # register subscribers if you want to inspect bus; not needed for now
+    return Scheduler(world, [alice, bob], bus)
+
+# ------------------------------------------------------------------ #
+def build_default(world: WorldState):
+    """
+    Convenience factory used by CLI.
+    Builds a Bus, MemoryManager, two starter agents, and returns Scheduler.
+    """
+    from sandbox.bus             import Bus
+    from memory                  import MemoryStore
+    from sandbox.memory_manager  import MemoryManager
+    from sandbox.agent           import BaseAgent
+
+    bus   = Bus()
+    store = MemoryStore(path="mem_db")
+    mem   = MemoryManager(world, store)
+
+    alice = BaseAgent("Alice", "You are Alice, a curious explorer.", bus=bus, mem_mgr=mem)
+    bob   = BaseAgent("Bob",   "You are Bob, a pragmatic builder.",  bus=bus, mem_mgr=mem)
+
     return Scheduler(world, [alice, bob], bus) 
