@@ -79,7 +79,7 @@ class BaseAgent:
 
         # 5) PERSIST TO MEMORY
         if self.mem_mgr:
-            self.mem_mgr.store(self.name, reply_text)
+            await self.mem_mgr.store(self.name, reply_text)
 
         # 6) PUBLISH ON BUS
         if self.bus:

@@ -98,7 +98,7 @@ class MemoryStore:
             print(f"[memory] Error checking document existence: {str(e)}")
             return False
 
-    def summarise_and_add(self, agent: str, text: str):
+    async def summarise_and_add(self, agent: str, text: str):
         """
         Summarise long content (> _LARGE chars) then add.
         Skip if already stored (hash collision check).
@@ -107,24 +107,24 @@ class MemoryStore:
         if self.contains(h):
             return
         doc = (text if len(text) <= _LARGE else
-               self._summarise(text)[:_MAX_LEN])
+               (await self._summarise(text))[:_MAX_LEN])
         try:
             self._coll.add(documents=[doc], metadatas=[{"agent": agent}], ids=[h])
             print(f"[memory] Added summarized document for {agent}")
         except Exception as e:
             print(f"[memory] Error adding summarized document for {agent}: {str(e)}")
 
-    def _summarise(self, text: str) -> str:
+    async def _summarise(self, text: str) -> str:
         """Summarize long text using OpenAI API."""
         prompt = ("Condense the following message to <=120 words, "
                   "keeping names and key facts:\n\n" + text[:4000])
         try:
-            summary = asyncio.run(llm.chat(          # sync context here
+            summary = await llm.chat(
                 [{"role": "user", "content": prompt}],
                 model=_SUMMARISE_MODEL,
                 temperature=0.3,
                 max_tokens=256,
-            ))
+            )
             return summary
         except Exception as e:
             print(f"[memory] Error summarizing text: {str(e)}")

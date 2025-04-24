@@ -12,9 +12,9 @@ class MemoryManager:
     # -------------------------------------------------- #
     # public helpers called by agents / scheduler
     # -------------------------------------------------- #
-    def store(self, agent: str, text: str) -> None:
+    async def store(self, agent: str, text: str) -> None:
         """Deduplicate + summarise + embed."""
-        self.memory_store.summarise_and_add(agent, text)
+        await self.memory_store.summarise_and_add(agent, text)
 
     def recall(self, agent: str, last_msg: str) -> List[str]:
         """
