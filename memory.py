@@ -1,0 +1,131 @@
+"""persistent vector memory for sandbox agents."""
+
+from __future__ import annotations
+import uuid
+import chromadb
+import os
+import asyncio
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+from typing import Dict, List, Optional
+import hashlib
+from sandbox import llm
+
+_SUMMARISE_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+_LARGE   = 700           # char threshold before we summarise
+_MAX_LEN = 400           # truncate final doc to this many chars
+
+def _hash(text: str) -> str:
+    return hashlib.sha1(text.encode()).hexdigest()
+
+class MemoryStore:
+    """A persistent vector memory store for agents using Chroma with OpenAI embeddings."""
+
+    def __init__(self, path: str = "mem_db", collection: str = "mem") -> None:
+        """Initialize the memory store with a persistent Chroma client.
+
+        Args:
+            path: Directory path for persistent Chroma storage.
+            collection: Name of the collection to store memories.
+        """
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY missing")
+        embed = OpenAIEmbeddingFunction(
+            api_key=api_key,
+            model_name="text-embedding-3-small",
+        )
+        self._client = chromadb.PersistentClient(path=path)
+        self._coll = self._client.get_or_create_collection(
+            name=collection,
+            embedding_function=embed,
+        )
+
+    def add(self, agent: str, text: str, *, metadata: Optional[Dict] = None) -> str:
+        """Add a text snippet to the memory store for a specific agent.
+
+        Args:
+            agent: Identifier for the agent storing the memory.
+            text: Text content to store.
+            metadata: Optional additional metadata to associate with the text.
+
+        Returns:
+            Unique ID assigned to the stored memory.
+        """
+        doc_id = uuid.uuid4().hex
+        meta = {"agent": agent, **(metadata or {})}
+        try:
+            self._coll.add(documents=[text], metadatas=[meta], ids=[doc_id])
+            return doc_id
+        except Exception as e:
+            print(f"[memory] Error adding document to store: {str(e)}")
+            return doc_id  # Return ID anyway for tracking, even if add fails
+
+    def recall(self, agent: str, query: str, k: int = 5) -> List[str]:
+        """Recall relevant text snippets for an agent based on a query.
+
+        Args:
+            agent: Identifier for the agent recalling memories.
+            query: Query text to search for relevant memories.
+            k: Number of top relevant memories to return.
+
+        Returns:
+            List of recalled text snippets, ordered by relevance.
+        """
+        try:
+            res = self._coll.query(
+                query_texts=[query],
+                n_results=k,
+                where={"agent": agent},
+            )
+            return res["documents"][0] if res["documents"] else []
+        except Exception as e:
+            print(f"[memory] Error recalling memories: {str(e)}")
+            return []
+
+    def contains(self, doc_hash: str) -> bool:
+        """Check if a document with the given hash exists in the store.
+
+        Args:
+            doc_hash: Hash of the document to check for.
+
+        Returns:
+            Boolean indicating if the document exists.
+        """
+        try:
+            result = self._coll.get(ids=[doc_hash], include=[])
+            return bool(result.get("ids", []))
+        except Exception as e:
+            print(f"[memory] Error checking document existence: {str(e)}")
+            return False
+
+    def summarise_and_add(self, agent: str, text: str):
+        """
+        Summarise long content (> _LARGE chars) then add.
+        Skip if already stored (hash collision check).
+        """
+        h = _hash(text)
+        if self.contains(h):
+            return
+        doc = (text if len(text) <= _LARGE else
+               self._summarise(text)[:_MAX_LEN])
+        try:
+            self._coll.add(documents=[doc], metadatas=[{"agent": agent}], ids=[h])
+            print(f"[memory] Added summarized document for {agent}")
+        except Exception as e:
+            print(f"[memory] Error adding summarized document for {agent}: {str(e)}")
+
+    def _summarise(self, text: str) -> str:
+        """Summarize long text using OpenAI API."""
+        prompt = ("Condense the following message to <=120 words, "
+                  "keeping names and key facts:\n\n" + text[:4000])
+        try:
+            summary = asyncio.run(llm.chat(          # sync context here
+                [{"role": "user", "content": prompt}],
+                model=_SUMMARISE_MODEL,
+                temperature=0.3,
+                max_tokens=256,
+            ))
+            return summary
+        except Exception as e:
+            print(f"[memory] Error summarizing text: {str(e)}")
+            return text[:_MAX_LEN]  # Fallback to truncated original text
