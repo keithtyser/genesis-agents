@@ -41,7 +41,10 @@ class Scheduler:
         await self.ctx.rollup()
 
         # ❸ Execute WORLD commands (if any) – mutates world
-        exec_cmds(self.world, msg["content"])
+        events = exec_cmds(self.world, self.bus, msg["name"], msg["content"])
+        if events:
+            for ev in events:
+                print(f"[world] {ev}")
 
         # ❹ Bump tick & maybe persist
         self.world.tick += 1
