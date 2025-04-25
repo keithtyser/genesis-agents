@@ -88,7 +88,10 @@ MAX_PROMPT_TOKENS = int(os.getenv("MAX_PROMPT_TOKENS", "12000"))
 
 def _num_tokens(messages, model="gpt-4o-mini"):
     model = model or "gpt-4o-mini"
-    enc = tiktoken.encoding_for_model(model)
+    try:
+        enc = tiktoken.encoding_for_model(model)
+    except KeyError:
+        enc = tiktoken.get_encoding("cl100k_base")
     n = 0
     for m in messages:
         n += 4                       # role + name etc.
