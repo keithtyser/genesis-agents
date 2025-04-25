@@ -1,0 +1,15 @@
+__pycache__
+mem_db
+mem_db_task7
+mem_test_db
+manual_test_agent.py
+manual_test_agent7.py
+manual_test_breeding.py
+manual_test_bus.py
+manual_test_commands.py
+manual_test_context.py
+manual_test_logging.py
+manual_test_scheduler.py
+mem_smoke.py
+world.json
+logs
