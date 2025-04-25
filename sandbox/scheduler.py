@@ -15,6 +15,7 @@ from sandbox.commands       import execute as exec_cmds
 from sandbox.world          import WorldState
 from sandbox.bus            import Bus
 from sandbox.breeding import BreedingManager
+from sandbox.log_manager import LogManager
 
 class Scheduler:
     def __init__(
@@ -30,6 +31,7 @@ class Scheduler:
         self.ctx = ContextManager(world)
         self.breeder = BreedingManager(world, bus, self)
         self._cursor = itertools.cycle(self.agents)
+        self.logger = LogManager()
 
     # -------------------------------------------------- #
     async def run_tick(self):
@@ -47,6 +49,14 @@ class Scheduler:
         if events:
             for ev in events:
                 print(f"[world] {ev}")
+
+        # record log entry
+        self.logger.write({
+            "time":   dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "tick":   self.world.tick,
+            "speaker": msg["name"],
+            "content": msg["content"],
+        })
 
         # ❹ Bump tick & maybe persist
         self.world.tick += 1
@@ -69,6 +79,7 @@ class Scheduler:
             count += 1
             if max_ticks and count >= max_ticks:
                 break
+        self.logger.close()
 
 from memory                 import MemoryStore
 from sandbox.memory_manager import MemoryManager
