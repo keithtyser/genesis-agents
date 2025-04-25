@@ -34,13 +34,4 @@ async def summarise(messages: List[dict]) -> str:
     except Exception:
         # naive fallback = first 3 lines
         plain = transcript.splitlines()[:3]
-        return " / ".join(plain)[:400]
-
-async def summarise(transcript: str, model: str | None = None) -> str:
-    prompt = _make_prompt(transcript)
-    try:
-        return await chat(prompt, model=SUMMARISE_MODEL, temperature=0)
-    except Exception:
-        # naive fallback = first 3 lines
-        plain = transcript.splitlines()[:3]
         return " / ".join(plain)[:400] 
