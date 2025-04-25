@@ -1,6 +1,6 @@
 import json, pathlib, glob, os
 
-WORLD_PATH = pathlib.Path("world.json")
+WORLD_PATH = pathlib.Path(os.getenv("WORLD_PATH", "world.json"))
 LOG_DIR    = pathlib.Path("logs")
 
 def load_world():
