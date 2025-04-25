@@ -18,6 +18,7 @@ from sandbox.breeding import BreedingManager
 from sandbox.log_manager import LogManager
 
 MAX_AGENTS = int(os.getenv("MAX_AGENTS", "10"))
+SAVE_EVERY = int(os.getenv("SAVE_EVERY", "10"))
 
 class Scheduler:
     def __init__(
@@ -73,7 +74,7 @@ class Scheduler:
 
         # ❹ Bump tick & maybe persist
         self.world.tick += 1
-        if self.world.tick % 10 == 0:
+        if self.world.tick % SAVE_EVERY == 0:
             self.world.save("world.json")
             print(f"[{dt.datetime.now().strftime('%H:%M:%S')}] tick={self.world.tick} saved.")
         await self.breeder.step()
