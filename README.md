@@ -10,7 +10,7 @@ Empty-Earth Sandbox is an experimental platform to simulate emergent behaviors i
 ## Quick Start
 
 ```powershell
-git clone https://github.com/your-repo/sandbox-ai.git
+git clone https://github.com/keithtyser/sandbox-ai.git
 cd sandbox-ai
 python -m venv .venv
 .venv\Scripts\Activate.ps1
@@ -25,8 +25,6 @@ python -m cli.sandbox --ticks 50
 streamlit run dashboards/world_view.py
 ```
 
-(Screenshot placeholder: [dashboard screenshot](#))
-
 The dashboard computes a **Gini coefficient** of object ownership — 0 = perfect equality, 1 = total monopoly.
 
 ## Folder Map
@@ -34,14 +32,29 @@ The dashboard computes a **Gini coefficient** of object ownership — 0 = perfec
 ```text
 │  README.md
 │  world.json
+│  memory.py
 ├─sandbox/
 │   ├─agent.py
+│   ├─breeding.py
+│   ├─bus.py
+│   ├─commands.py
+│   ├─config.py
+│   ├─context.py
+│   ├─llm.py
+│   ├─log_manager.py
+│   ├─memory_manager.py
 │   ├─scheduler.py
+│   ├─summary.py
+│   ├─world.py
 ├─experiments/
 │   ├─encryption.py
 │   └─code_review.py
 ├─dashboards/
-└─logs/
+│   ├─world_view.py
+│   ├─graph_builder.py
+│   ├─utils.py
+├─cli/
+│   ├─sandbox.py
 ```
 
 ## Environment Variables
@@ -63,14 +76,9 @@ The dashboard computes a **Gini coefficient** of object ownership — 0 = perfec
   ```powershell
   Get-Content -Path logs\latest.log -Tail 50
   ```
-- **Manual breeding demo**:
-  ```powershell
-  python manual_test_breeding.py
-  ```
 
 ## Known Limitations / Roadmap
 
-- No persistence across repo pulls
 - Breeding cooldown mechanism is rudimentary
 - Non-deterministic costs per run
 - Token truncation may cut context
