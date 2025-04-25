@@ -37,23 +37,16 @@ class ContextManager:
         already bigger than MAX_VISIBLE_TURNS, summarise everything **except**
         the last MAX_VISIBLE_TURNS into a single bullet block.
         """
-        if len(self._recent) <= MAX_VISIBLE_TURNS:
+        if len(self._recent) > MAX_VISIBLE_TURNS and (self._since_rollup >= SUMMARY_HORIZON or self._summary is None):
+            older = list(self._recent)[:-MAX_VISIBLE_TURNS]
+            self._summary = await summarise(older)
+
+            # keep only the fresh tail
+            tail = list(self._recent)[-MAX_VISIBLE_TURNS:]
+            self._recent.clear()
+            self._recent.extend(tail)
+
             self._since_rollup = 0
-            return
-
-        if self._since_rollup < SUMMARY_HORIZON:
-            # not yet time to roll up
-            return
-
-        older = list(self._recent)[:-MAX_VISIBLE_TURNS]
-        self._summary = await summarise(older)
-
-        # keep only the fresh tail
-        tail = list(self._recent)[-MAX_VISIBLE_TURNS:]
-        self._recent.clear()
-        self._recent.extend(tail)
-
-        self._since_rollup = 0
 
     # -------------------------------------------------- #
     def build_prompt(
