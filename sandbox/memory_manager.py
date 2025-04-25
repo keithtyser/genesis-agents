@@ -16,7 +16,7 @@ class MemoryManager:
         """Deduplicate + summarise + embed."""
         await self.memory_store.summarise_and_add(agent, text)
 
-    def recall(self, agent: str, last_msg: str) -> List[str]:
+    async def recall(self, agent: str, last_msg: str) -> List[str]:
         """
         Return ≤ k snippets relevant for *agent*.
         Query is built from the agent's last visible message
@@ -24,4 +24,4 @@ class MemoryManager:
         """
         loc = self.world.agents.get(agent, {}).get("location", "")
         query = f"{last_msg} {loc}".strip() or agent
-        return self.memory_store.recall(agent, query, k=self.k) 
+        return await self.memory_store.recall(agent, query, k=self.k) 

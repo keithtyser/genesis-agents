@@ -40,7 +40,7 @@ class MemoryStore:
             embedding_function=embed,
         )
 
-    def add(self, agent: str, text: str, *, metadata: Optional[Dict] = None) -> str:
+    async def add(self, agent: str, text: str, *, metadata: Optional[Dict] = None) -> str:
         """Add a text snippet to the memory store for a specific agent.
 
         Args:
@@ -54,13 +54,19 @@ class MemoryStore:
         doc_id = uuid.uuid4().hex
         meta = {"agent": agent, **(metadata or {})}
         try:
-            self._coll.add(documents=[text], metadatas=[meta], ids=[doc_id])
+            # Chroma's .add() can block on disk; delegate to thread pool
+            await asyncio.to_thread(
+                self._coll.add,
+                documents=[text],
+                metadatas=[meta],
+                ids=[doc_id],
+            )
             return doc_id
         except Exception as e:
             print(f"[memory] Error adding document to store: {str(e)}")
             return doc_id  # Return ID anyway for tracking, even if add fails
 
-    def recall(self, agent: str, query: str, k: int = 5) -> List[str]:
+    async def recall(self, agent: str, query: str, k: int = 5) -> List[str]:
         """Recall relevant text snippets for an agent based on a query.
 
         Args:
@@ -72,7 +78,9 @@ class MemoryStore:
             List of recalled text snippets, ordered by relevance.
         """
         try:
-            res = self._coll.query(
+            import asyncio
+            res = await asyncio.to_thread(
+                self._coll.query,
                 query_texts=[query],
                 n_results=k,
                 where={"agent": agent},

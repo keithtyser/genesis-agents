@@ -46,13 +46,18 @@ class BaseAgent:
         dict with keys: role, name, content, ts
         """
         # 1) MEMORY RECALL BLOCK
-        mem_block = ""
-        if self.mem_mgr:
-            last_raw = context_mgr.recent_messages[-1]["content"] if context_mgr.recent_messages else ""
-            recalls  = self.mem_mgr.recall(self.name, last_raw)
-            if recalls:
-                bullets   = "\n".join("• " + r for r in recalls)
-                mem_block = "[Memory recall]\n" + bullets
+        last_raw = ""
+        recent_msgs = context_mgr.recent_messages
+        for msg in reversed(recent_msgs):
+            if msg.get("name") == self.name or (msg.get("role") == "user" and msg.get("content", "").lower().find(self.name.lower()) != -1):
+                last_raw = msg.get("content", "")
+                break
+        recalls  = await self.mem_mgr.recall(self.name, last_raw) if self.mem_mgr else []
+        if recalls:
+            bullets   = "\n".join("• " + r for r in recalls)
+            mem_block = "[Memory recall]\n" + bullets
+        else:
+            mem_block = ""
 
         # 2) BUILD PROMPT (ContextManager inserts summary + recents)
         prompt = context_mgr.build_prompt(
