@@ -95,6 +95,15 @@ class Scheduler:
                 break
         self.logger.close()
 
+        # ---------- NEW  : cancel any orphaned asyncio Tasks ----------
+        import asyncio
+        current = asyncio.current_task()
+        dangling = [t for t in asyncio.all_tasks() if t is not current and not t.done()]
+        for t in dangling:
+            t.cancel()
+        if dangling:                       # optional debug print
+            print(f"[shutdown] cancelled {len(dangling)} dangling tasks")
+
 from memory                 import MemoryStore
 from sandbox.memory_manager import MemoryManager
 from sandbox.agent          import BaseAgent
