@@ -11,6 +11,7 @@ Environment variables
     OPENAI_API_KEY            mandatory
     OPENAI_MODEL              default model (fallback 'gpt-4o-mini')
     OPENAI_PARALLEL_MAX       max concurrent calls (default 5)
+    MAX_PROMPT_TOKENS         max tokens in prompt (default 12000)
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import os, asyncio, typing as _t
 from tenacity import retry, wait_random_exponential, stop_after_attempt, RetryError
 from openai import AsyncOpenAI, OpenAIError
 import contextvars
+import tiktoken
 
 # -------------------------------------------------------------- #
 # Global semaphore – one per interpreter
@@ -82,10 +84,24 @@ async def _chat_once(
 
 
 # -------------------------------------------------------------- #
+MAX_PROMPT_TOKENS = int(os.getenv("MAX_PROMPT_TOKENS", "12000"))
+
+def _num_tokens(messages, model="gpt-4o-mini"):
+    model = model or "gpt-4o-mini"
+    enc = tiktoken.encoding_for_model(model)
+    n = 0
+    for m in messages:
+        n += 4                       # role + name etc.
+        n += len(enc.encode(m["content"]))
+    return n
+
+
+# -------------------------------------------------------------- #
 async def chat(
     messages: list[dict[str, str]],
     *,
     model: str | None = None,
+    temperature: float = 0.7,
     **kwargs,
 ) -> str:
     """
@@ -97,9 +113,27 @@ async def chat(
 
     _model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
+    tokens = _num_tokens(messages, model=_model)
+    if tokens > MAX_PROMPT_TOKENS:
+        # keep system msg + last 100 msgs until under limit
+        sys_msg = messages[0]
+        tail    = messages[-100:]
+        while _num_tokens([sys_msg] + tail, model=_model) > MAX_PROMPT_TOKENS:
+            tail.pop(0)          # drop oldest one at a time
+        messages = [sys_msg] + tail
+
     try:
-        return await _chat_once(messages, model=_model, **kwargs)
+        return await _chat_once(messages, model=_model, temperature=temperature, **kwargs)
     except RetryError as final:
         raise LLMError(
             f"OpenAI chat failed after {final.last_attempt.attempt_number} attempts"
-        ) from final 
+        ) from final
+    except Exception as e:
+        # crude local summary of the last user/assistant pair
+        raw = ""
+        for msg in reversed(messages):
+            if msg.get("content"):
+                raw = msg["content"]
+                break
+        fallback = raw[-500:] if raw else "No relevant conversation content found."
+        return f"[LLM error: {e.__class__.__name__}] {fallback}" 

@@ -17,6 +17,8 @@ from sandbox.bus            import Bus
 from sandbox.breeding import BreedingManager
 from sandbox.log_manager import LogManager
 
+MAX_AGENTS = int(os.getenv("MAX_AGENTS", "10"))
+
 class Scheduler:
     def __init__(
         self,
@@ -34,6 +36,17 @@ class Scheduler:
         self.logger = LogManager()
 
     # -------------------------------------------------- #
+    def _enforce_agent_cap(self):
+        if len(self.agents) <= MAX_AGENTS:
+            return
+        # strategy: keep first 2 (usually Alice/Bob) + latest arrivals
+        keep = self.agents[:2] + self.agents[-(MAX_AGENTS-2):]
+        dropped = {a.name for a in self.agents if a not in keep}
+        self.agents = keep
+        import itertools
+        self._cursor = itertools.cycle(self.agents)
+        print(f"[guard] MAX_AGENTS={MAX_AGENTS}. Dropped: {', '.join(dropped)}")
+
     async def run_tick(self):
         agent = next(self._cursor)
 
@@ -64,6 +77,7 @@ class Scheduler:
             self.world.save("world.json")
             print(f"[{dt.datetime.now().strftime('%H:%M:%S')}] tick={self.world.tick} saved.")
         await self.breeder.step()
+        self._enforce_agent_cap()
         # Check if new agents were added and refresh cursor to include them immediately after current agent
         import itertools
         self._cursor = itertools.cycle(self.agents)
