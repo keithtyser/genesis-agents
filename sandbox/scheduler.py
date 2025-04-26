@@ -64,6 +64,9 @@ class Scheduler:
 
         # ❶ Agent thinks
         msg = await agent.think(self.world, self.ctx)
+        
+        # Persist agent to world.agents to ensure they are saved even if no directive is issued
+        self.world.agents.setdefault(agent.name, {})
 
         # ❷ Add to context
         self.ctx.add(msg)
