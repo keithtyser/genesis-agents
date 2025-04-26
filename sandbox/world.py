@@ -26,6 +26,7 @@ class WorldState:
         """
         Atomically write JSON to disk (temp file + replace).
         Converts datetime objects to ISO-8601 strings automatically.
+        Optionally saves snapshots to snapshots/ directory every SNAP_EVERY ticks.
         """
         def _dt_handler(o):
             if isinstance(o, datetime):
@@ -35,6 +36,7 @@ class WorldState:
         data = asdict(self)
         json_str = json.dumps(data, indent=2, default=_dt_handler)
 
+        # Save the main world state file
         dir_ = os.path.dirname(path) or "."
         with tempfile.NamedTemporaryFile(
             mode="w", encoding="utf-8", delete=False, dir=dir_
@@ -42,6 +44,16 @@ class WorldState:
             tmp.write(json_str)
             tmp_path = tmp.name
         os.replace(tmp_path, path)
+
+        # Check for snapshot rotation based on environment variable
+        snap_every = int(os.environ.get('SNAP_EVERY', 500))
+        if snap_every > 0 and self.tick > 0 and self.tick % snap_every == 0:
+            snapshot_dir = 'snapshots'
+            if not os.path.exists(snapshot_dir):
+                os.makedirs(snapshot_dir)
+            snapshot_path = os.path.join(snapshot_dir, f'world_{self.tick}.json')
+            with open(snapshot_path, 'w', encoding='utf-8') as f:
+                f.write(json_str)
 
     # -------------------------------------------------------------- #
     @classmethod
