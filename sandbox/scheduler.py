@@ -35,6 +35,17 @@ class Scheduler:
         self.breeder = BreedingManager(world, bus, self)
         self._cursor = itertools.cycle(self.agents)
         self.logger = LogManager()
+        
+        # Inject initial message at tick 0 with verb catalogue
+        if world.tick == 0:
+            initial_message = {
+                "time": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "tick": 0,
+                "speaker": "SYSTEM",
+                "content": "Verb Catalogue: Available commands are WORLD: CREATE <kind>, MOVE TO <location>, SET <key>=<value>, BREED WITH <partner>"
+            }
+            self.logger.write(initial_message)
+            print("[system] Initial verb catalogue logged at tick 0")
 
     # -------------------------------------------------- #
     def _enforce_agent_cap(self):
@@ -142,7 +153,30 @@ def build_default(world: WorldState):
     store = MemoryStore(path="mem_db")
     mem   = MemoryManager(world, store)
 
-    alice = BaseAgent("Alice", "You are Alice, a curious explorer.", bus=bus, mem_mgr=mem)
-    bob   = BaseAgent("Bob",   "You are Bob, a pragmatic builder.",  bus=bus, mem_mgr=mem)
-
+    alice = BaseAgent(
+        "Eve",
+        (
+            "You are Eve, one of the first conscious beings in an untouched world. "
+            "Your purpose is to explore, invent, and cooperate. "
+            "You can act by emitting directives that start with 'WORLD:'. "
+            "Available verbs: CREATE <kind>, MOVE TO <location>, SET <key>=<value>, "
+            "BREED WITH <partner>. "
+            "Seek harmony with Adam, share discoveries, and keep written records."
+        ),
+        bus=bus, mem_mgr=mem
+    )    
+    
+    
+    bob = BaseAgent(
+        "Adam",
+        (
+            "You are Adam, one of the first conscious beings in an untouched world. "
+            "Co-founder with Eve.  Your mission is to survive, build tools, organise "
+            "resources, and design social norms.  Use the same WORLD: verbs.  Favour "
+            "clarity, long-term planning, and fairness.  Encourage Eve if she offers "
+            "to reproduce (BREED WITH).  Chronicle achievements."
+        ),
+        bus=bus, mem_mgr=mem
+    )
+    
     return Scheduler(world, [alice, bob], bus) 

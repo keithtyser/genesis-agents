@@ -63,6 +63,7 @@ class ContextManager:
         2. optional memory block (as system Memory)
         3. optional running summary
         4. recent raw messages (<= MAX_VISIBLE_TURNS)
+        5. list of all agents in the system
         """
         prompt: List[Message] = [{"role": "system", "content": system_msg}]
 
@@ -76,6 +77,15 @@ class ContextManager:
             )
 
         prompt.extend(self._recent)
+
+        # Add list of all agents in the system
+        agent_names = list(self.world.agents.keys())
+        if agent_names:
+            agents_list = ", ".join(agent_names)
+            prompt.append(
+                {"role": "system", "name": "AgentList", "content": f"Current agents in the system: {agents_list}"}
+            )
+
         return prompt
 
     # -------------------------------------------------- #
