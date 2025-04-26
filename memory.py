@@ -117,7 +117,7 @@ class MemoryStore:
         doc = (text if len(text) <= _LARGE else
                (await self._summarise(text))[:_MAX_LEN])
         try:
-            self._coll.add(documents=[doc], metadatas=[{"agent": agent}], ids=[h])
+            await asyncio.to_thread(self._coll.add, documents=[doc], metadatas=[{"agent": agent}], ids=[h])
             print(f"[memory] Added summarized document for {agent}")
         except Exception as e:
             print(f"[memory] Error adding summarized document for {agent}: {str(e)}")
