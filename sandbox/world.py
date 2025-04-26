@@ -11,6 +11,7 @@ class WorldState:
     tick: int = 0
     objects: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     agents: Dict[str, Dict[str, Any]]  = field(default_factory=dict)
+    verbs: Dict[str, str] = field(default_factory=dict)
 
     # -------------------------------------------------------------- #
     def add_object(self, kind: str, props: Dict[str, Any] | None = None) -> str:
@@ -69,4 +70,5 @@ class WorldState:
             tick=data.get("tick", 0),
             objects=data.get("objects", {}),
             agents=data.get("agents", {}),
+            verbs=data.get("verbs", {}),
         ) 

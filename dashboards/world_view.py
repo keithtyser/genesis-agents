@@ -47,6 +47,10 @@ with st.sidebar:
 
     st.write(f"Ownership Gini: **{ownership_gini:.2f}**")
 
+    st.markdown("### Custom Verbs")
+    for v, t in world.get("verbs", {}).items():
+        st.write(f"{v} → {t}")
+
 # Plotly force-directed
 data = json_graph.node_link_data(g)
 

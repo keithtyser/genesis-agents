@@ -31,6 +31,8 @@ import re, uuid
 
 _PATTERN = re.compile(r"^WORLD:\s*(.+)", re.IGNORECASE)
 
+CORE_VERBS = {"CREATE", "MOVE", "SET", "BREED", "DEFINE", "HELP"}
+
 
 def _kv_pairs(tokens: List[str]) -> Dict[str, str]:
     """Return dict for tokens that look like key=value."""
@@ -59,8 +61,46 @@ def execute(world, bus, speaker: str, content: str) -> List[str]:
         verb      = parts[0].upper()
         remainder = parts[1:]
 
-        if verb == "CREATE" and remainder:
-            kind, *rest = remainder
+        if verb == "DEFINE" and remainder and "AS" in remainder:
+            try:
+                idx = remainder.index("AS")
+                new_verb = remainder[0].upper()
+                template = " ".join(remainder[idx+1:])
+                if new_verb in CORE_VERBS or new_verb in world.verbs:
+                    events.append(f"{speaker} failed to redefine reserved verb {new_verb}")
+                else:
+                    # Quick sanity: template must start with a core verb
+                    tverb = template.split()[0].upper()
+                    if tverb not in CORE_VERBS:
+                        events.append(f"{speaker} tried to map to unknown primitive {tverb}")
+                    else:
+                        world.verbs[new_verb] = template
+                        events.append(f"{speaker} defined new verb {new_verb}")
+            except ValueError:
+                events.append(f"{speaker} malformed DEFINE syntax")
+            continue
+
+        elif verb in world.verbs:
+            # Replace placeholders ${arg1}, ${arg2}, etc. with tokens in remainder
+            mapping = world.verbs[verb]
+            for i, tok in enumerate(remainder, 1):
+                mapping = mapping.replace(f"${{arg{i}}}", tok)
+            # Recursively execute the expanded line
+            sub_events = execute(world, bus, speaker, f"WORLD: {mapping}")
+            events.extend(sub_events)
+            continue
+
+        elif verb == "CREATE" and remainder:
+            # Skip articles (a, an, the) to find the actual kind
+            kind = None
+            rest = []
+            for token in remainder:
+                if kind is None and token.lower() not in ["a", "an", "the"]:
+                    kind = token
+                else:
+                    rest.append(token)
+            if kind is None:
+                kind = remainder[0]  # Fallback if all tokens are articles
             props = _kv_pairs(rest) | {"creator": speaker, "turn": world.tick}
             oid   = world.add_object(kind, props)
             events.append(f"{speaker} created {kind} (id={oid})")
