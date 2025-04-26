@@ -9,6 +9,7 @@ from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from typing import Dict, List, Optional
 import hashlib
 from sandbox import llm
+from sandbox.llm import _get_semaphore  # reuse same one
 
 _SUMMARISE_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 _LARGE   = 700           # char threshold before we summarise
@@ -16,6 +17,10 @@ _MAX_LEN = 400           # truncate final doc to this many chars
 
 def _hash(text: str) -> str:
     return hashlib.sha1(text.encode()).hexdigest()
+
+async def _rate_limited(fn, *a, **kw):
+    async with _get_semaphore():
+        return await asyncio.to_thread(fn, *a, **kw)
 
 class MemoryStore:
     """A persistent vector memory store for agents using Chroma with OpenAI embeddings."""
@@ -55,7 +60,7 @@ class MemoryStore:
         meta = {"agent": agent, **(metadata or {})}
         try:
             # Chroma's .add() can block on disk; delegate to thread pool
-            await asyncio.to_thread(
+            await _rate_limited(
                 self._coll.add,
                 documents=[text],
                 metadatas=[meta],
@@ -78,8 +83,7 @@ class MemoryStore:
             List of recalled text snippets, ordered by relevance.
         """
         try:
-            import asyncio
-            res = await asyncio.to_thread(
+            res = await _rate_limited(
                 self._coll.query,
                 query_texts=[query],
                 n_results=k,
@@ -117,7 +121,7 @@ class MemoryStore:
         doc = (text if len(text) <= _LARGE else
                (await self._summarise(text))[:_MAX_LEN])
         try:
-            await asyncio.to_thread(self._coll.add, documents=[doc], metadatas=[{"agent": agent}], ids=[h])
+            await _rate_limited(self._coll.add, documents=[doc], metadatas=[{"agent": agent}], ids=[h])
             print(f"[memory] Added summarized document for {agent}")
         except Exception as e:
             print(f"[memory] Error adding summarized document for {agent}: {str(e)}")
