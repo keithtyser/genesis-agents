@@ -78,17 +78,39 @@ class WorldState:
                 # Add special materials
                 self.environment["resources"]["rare_minerals"] = self.environment["resources"].get("rare_minerals", 0) + 10
             elif event["type"] == "innovation_surge":
-                # Boost combination success and add special materials
-                self.environment["discovery_materials"].extend(["crystal_shard", "ancient_gear", "energy_core"])
+                # Boost combination success and add special materials as actual objects
+                special_materials = ["crystal_shard", "ancient_gear", "energy_core"]
+                for material in special_materials:
+                    props = {
+                        "description": f"A mysterious {material.replace('_', ' ')} pulsing with energy",
+                        "location": "energy_nexus",
+                        "creator": "cosmic",
+                        "discoverable": True,
+                        "rarity": "legendary",
+                        "energy_level": "high"
+                    }
+                    oid = self.add_object(material, props)
+                    self.environment["discovery_materials"].append(material)
             elif event["type"] == "material_shortage":
                 # Reduce basic resources to encourage cooperation
                 for resource in ["wood", "stone"]:
                     self.environment["resources"][resource] = max(5, self.environment["resources"][resource] - 30)
                 self.environment["scarcity_pressure"] += 3
             elif event["type"] == "discovery_cache":
-                # Add rare discovery materials
+                # Add rare discovery materials as actual findable objects
                 cache_items = ["mysterious_blueprint", "strange_alloy", "forgotten_tool"]
-                self.environment["discovery_materials"].extend(cache_items)
+                for item in cache_items:
+                    # Create actual objects that can be found and analyzed
+                    props = {
+                        "description": f"A rare {item.replace('_', ' ')} with unknown properties",
+                        "location": "hidden_cave",
+                        "creator": "ancient",
+                        "discoverable": True,
+                        "rarity": "rare"
+                    }
+                    oid = self.add_object(item, props)
+                    # Also add to discovery_materials list for context
+                    self.environment["discovery_materials"].append(item)
                 
             return f"🌍 ENVIRONMENTAL EVENT: {event['description']} (lasts {event['duration']} ticks)"
         return None
@@ -164,16 +186,27 @@ class WorldState:
         history = self.agent_action_history[agent_name]
         history.append(action)
         
-        # Keep only last 10 actions
-        if len(history) > 10:
+        # Keep only last 12 actions (increased from 10)
+        if len(history) > 12:
             history.pop(0)
         
-        # Check for repetitive failed actions - be less aggressive
-        if len(history) >= 8:  # Need more history before detecting loops
+        # Be less aggressive with informational commands
+        if any(cmd in action for cmd in ["LIST", "has no skills", "sees available", "sees agents"]):
+            # For informational commands, require more repetitions and longer history
+            if len(history) >= 10:
+                recent_actions = history[-10:]
+                unique_actions = set(recent_actions)
+                # Only trigger if literally the same command 8+ times in a row
+                if len(unique_actions) <= 1 and len([a for a in recent_actions if "LIST" in a or "has no" in a]) >= 8:
+                    return True
+            return False
+        
+        # For other commands, use standard detection but be less aggressive
+        if len(history) >= 10:  # Increased from 8
             recent_actions = history[-8:]
-            # If last 8 actions are very similar (indicating potential loop)
             unique_actions = set(recent_actions)
-            if len(unique_actions) <= 1:  # Only 1 action type (truly stuck)
+            # Only trigger if truly stuck (same action 6+ times)
+            if len(unique_actions) <= 1 and len(recent_actions) >= 6:
                 return True
         return False
 

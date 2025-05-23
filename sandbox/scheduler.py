@@ -88,13 +88,50 @@ class Scheduler:
         # 🔄 NEW: Detect and handle agent loops
         is_looping = self.world.detect_agent_loops(agent.name, msg["content"])
         if is_looping:
-            print(f"[loop-breaker] {agent.name} seems stuck in a loop, injecting alternative suggestions")
+            print(f"[loop-breaker] {agent.name} seems stuck in a loop, injecting creation-focused suggestions")
+            # Check if agent has been just analyzing without creating
+            agent_history = self.world.agent_action_history.get(agent.name, [])
+            recent_analysis = sum(1 for action in agent_history[-8:] if "ANALYZE" in action)
+            recent_lists = sum(1 for action in agent_history[-8:] if "LIST" in action)
+            recent_creates = sum(1 for action in agent_history[-8:] if "CREATE" in action)
+            
+            # Check for specific repetitive creation patterns
+            if recent_creates >= 4:
+                # Check if creating the same thing repeatedly
+                create_actions = [action for action in agent_history[-8:] if "CREATE" in action]
+                if len(set(create_actions)) <= 2:  # Creating same object types
+                    discovery_combos = [
+                        "WORLD: COMBINE crystal_shard AND hammer INTO crystal_hammer",
+                        "WORLD: COMBINE ancient_gear AND axe INTO mystical_axe",
+                        "WORLD: EXPERIMENT WITH energy_core forgotten_tool",
+                        "WORLD: COMBINE strange_alloy AND advanced_toolbox INTO master_toolkit"
+                    ]
+                    alternative_msg = f"REPETITIVE CREATION DETECTED: Stop making duplicates! Try discovery combinations: {' OR '.join(discovery_combos[:2])}"
+                elif recent_analysis >= 4 or recent_lists >= 4:
+                    # Force creation-focused alternatives
+                    creation_goals = [
+                        "WORLD: CREATE hammer",
+                        "WORLD: CREATE shelter", 
+                        "WORLD: CREATE rope",
+                        "WORLD: LEARN tool-making",
+                        "WORLD: COMBINE wood AND stone INTO basic_tool"
+                    ]
+                    alternative_msg = f"ANALYSIS LOOP DETECTED: Stop analyzing and start creating! Try: {' OR '.join(creation_goals[:3])}"
+                else:
+                    # Standard alternative goals
+                    alternative_goals = self._get_alternative_goals()
+                    alternative_msg = f"LOOP DETECTED: Consider these alternatives: {alternative_goals}"
+            else:
+                # Standard alternative goals
+                alternative_goals = self._get_alternative_goals()
+                alternative_msg = f"LOOP DETECTED: Consider these alternatives: {alternative_goals}"
+            
             # Inject alternative goal suggestions into context
-            alternative_goals = self._get_alternative_goals()
             self.ctx.add({
+                "role": "system",
                 "name": "SYSTEM",
-                "content": f"LOOP DETECTED: Consider these alternatives: {alternative_goals}",
-                "time": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+                "content": alternative_msg,
+                "ts": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z"
             })
         
         # Persist agent to world.agents to ensure they are saved even if no directive is issued
@@ -136,33 +173,53 @@ class Scheduler:
     def _get_alternative_goals(self) -> str:
         """
         Generate alternative goal suggestions based on current world focus and state.
+        Enhanced with discovery material priorities.
         """
         focus = self.world.current_focus
+        
+        # Check for available discovery materials
+        discovery_objects = [obj for obj in self.world.objects.values() 
+                           if obj.get("creator") in ["cosmic", "ancient"] or obj.get("rarity") in ["rare", "legendary"]]
+        
+        if discovery_objects and len(discovery_objects) >= 2:
+            # Priority: discovery material combinations
+            discovery_alternatives = [
+                "WORLD: COMBINE crystal_shard AND ancient_gear INTO mystical_device",
+                "WORLD: EXPERIMENT WITH energy_core forgotten_tool strange_alloy",
+                "WORLD: COMBINE mysterious_blueprint AND advanced_toolbox INTO master_toolkit",
+                "WORLD: EXPERIMENT WITH crystal_shard energy_core ancient_gear"
+            ]
+            return " OR ".join(discovery_alternatives[:2])
+        
         alternatives = {
             "exploration": [
-                "WORLD: MOVE TO meadow",
-                "WORLD: CREATE exploration_tool", 
-                "WORLD: ANALYZE environment"
+                "WORLD: ANALYZE mysterious_blueprint",
+                "WORLD: COMBINE crystal_shard AND hammer INTO crystal_hammer", 
+                "WORLD: EXPERIMENT WITH ancient_gear energy_core",
+                "WORLD: LEARN exploration"
             ],
             "survival": [
-                "WORLD: CREATE food_storage",
-                "WORLD: CREATE water_container",
-                "WORLD: USE shelter"
+                "WORLD: COMBINE shelter AND energy_core INTO powered_shelter",
+                "WORLD: CREATE water_purifier",
+                "WORLD: COMBINE fire_pit AND crystal_shard INTO energy_forge",
+                "WORLD: LEARN hunting"
             ],
             "innovation": [
-                "WORLD: EXPERIMENT WITH available materials",
-                "WORLD: COMBINE existing objects",
-                "WORLD: CREATE new_invention"
+                "WORLD: EXPERIMENT WITH crystal_shard ancient_gear energy_core",
+                "WORLD: COMBINE forgotten_tool AND advanced_toolbox INTO master_toolkit",
+                "WORLD: DEFINE ENHANCE AS COMBINE ${{arg1}} AND crystal_shard INTO enhanced_${{arg1}}",
+                "WORLD: LEARN engineering"
             ],
             "cooperation": [
-                "WORLD: TEACH partner new_skill",
-                "WORLD: TRADE resources",
-                "WORLD: CREATE shared_workspace"
+                "WORLD: TEACH partner advanced_crafting",
+                "WORLD: COMBINE rope AND ancient_gear INTO mystical_rope",
+                "WORLD: CREATE shared_laboratory",
+                "WORLD: TRADE advanced_toolbox FOR energy_core WITH partner"
             ]
         }
         
         suggestions = alternatives.get(focus, alternatives["exploration"])
-        return " OR ".join(suggestions[:2])
+        return " OR ".join(suggestions[:3])
 
     # -------------------------------------------------- #
     async def loop(self, max_ticks: int | None = None):
@@ -232,8 +289,45 @@ def build_default(world: WorldState):
             "CRITICAL: You must ONLY communicate through WORLD: directives. Every action must start with 'WORLD:' followed by the exact command syntax. "
             "Do NOT use conversational language. Do NOT say things like 'I will go to the forest' - instead use 'WORLD: MOVE TO forest'. "
             
+            "STARTING STRATEGY (Early Game): Since you're just beginning, focus on productive actions: "
+            "- **CRITICAL: CREATE basic tools FIRST!** Start with: hammer, axe, rope, knife, shelter "
+            "- **Stop endless analyzing!** Create tools instead of repeatedly analyzing the same 3 objects "
+            "- **Build progression:** CREATE simple tools → COMBINE into advanced tools → EXPERIMENT with results "
+            "- MOVE TO different locations: forest, river, mountain, cave, clearing "
+            "- ANALYZE objects only ONCE, then CREATE new ones "
+            "- LEARN essential skills: tool-making, exploration, crafting, building "
+            "- Only use LIST when genuinely needed - don't repeatedly check the same information "
+            
+            "**CREATION PRIORITY SEQUENCE (FOLLOW THIS ORDER):** "
+            "1. WORLD: CREATE hammer (basic tool for everything else) "
+            "2. WORLD: CREATE axe (for wood processing) "
+            "3. WORLD: CREATE rope (for binding and construction) "
+            "4. WORLD: CREATE shelter (for protection) "
+            "5. WORLD: CREATE fire_pit (for warmth and cooking) "
+            "6. WORLD: LEARN tool-making (essential skill) "
+            "7. WORLD: COMBINE hammer AND wood INTO advanced_hammer "
+            "8. WORLD: EXPERIMENT WITH hammer rope wood "
+            
+            "SKILL LEARNING PROGRESSION: "
+            "1. Start with basics: LEARN tool-making, LEARN exploration "
+            "2. Build on foundations: LEARN crafting, LEARN hunting "
+            "3. Advanced skills: LEARN engineering, LEARN agriculture "
+            "4. TEACH Adam once you have skills to share "
+            
+            "CONCRETE EXAMPLES OF VALID COMBINATIONS: "
+            "WORLD: COMBINE wood AND stone INTO hammer "
+            "WORLD: COMBINE rope AND hook INTO fishing_line "
+            "WORLD: COMBINE clay AND fire INTO pottery "
+            "WORLD: COMBINE hammer AND wood INTO wooden_frame "
+            "WORLD: COMBINE shelter AND fire_pit INTO warm_shelter "
+            
+            "EXPERIMENT EXAMPLES: "
+            "WORLD: EXPERIMENT WITH mysterious_seed water clay "
+            "WORLD: EXPERIMENT WITH ancient_fragment stone fire "
+            "WORLD: EXPERIMENT WITH wood stone clay "
+            
             "ADAPTIVE STRATEGY: "
-            "- If EXPLORATION focus: prioritize MOVE TO new locations, ANALYZE objects, CREATE exploration tools "
+            "- If EXPLORATION focus: prioritize MOVE TO new locations, CREATE exploration tools, ANALYZE discoveries "
             "- If SURVIVAL focus: prioritize CREATE shelter/storage, USE resources, COMBINE for essentials "
             "- If INNOVATION focus: prioritize EXPERIMENT WITH materials, COMBINE objects, DEFINE new verbs "
             "- If COOPERATION focus: prioritize TEACH skills, LEARN from Adam, CREATE shared resources "
@@ -244,23 +338,32 @@ def build_default(world: WorldState):
             "- If innovation surge active: prioritize COMBINE actions for bonus rewards "
             "- If scarcity pressure high: TRADE resources with Adam or CREATE essential items "
             
-            "EXACT SYNTAX REQUIRED: "
-            "WORLD: LIST (see all available objects) "
-            "WORLD: LIST skills (see your abilities) "
-            "WORLD: CREATE <specific_object_name> "
-            "WORLD: MOVE TO <specific_location_name> "
-            "WORLD: COMBINE <object1> AND <object2> INTO <result_name> "
-            "WORLD: EXPERIMENT WITH <object1> <object2> <object3> "
-            "WORLD: ANALYZE <object_name> "
-            "WORLD: TEACH <agent_name> <skill_name> "
-            "WORLD: LEARN <skill_name> "
-            "WORLD: USE <object_name> ON <target> "
-            "WORLD: IF HAS <object> THEN CREATE <something> "
-            "WORLD: IF location=<place> THEN <action> "
+            "**DISCOVERY MATERIALS PRIORITY**: When you see objects with 'cosmic' or 'ancient' creators: "
+            "- **CRITICAL**: crystal_shard, ancient_gear, energy_core are HIGH-VALUE discovery materials! "
+            "- **USE THESE IMMEDIATELY**: ANALYZE crystal_shard, EXPERIMENT WITH crystal_shard ancient_gear "
+            "- **IGNORE phantom objects**: Don't look for 'ancient_fragment' or 'mysterious_seed' - they don't exist "
+            "- **REAL discovery objects**: Look for objects created by 'cosmic' or 'ancient' in LIST output "
+            "- ANALYZE mysterious_blueprint, strange_alloy, forgotten_tool first "
+            "- EXPERIMENT WITH crystal_shard ancient_gear energy_core "
+            "- COMBINE discovery materials with your basic tools "
+            "- These rare materials can create breakthrough innovations! "
             
-            "BREAK LOOPS: If your recent actions failed repeatedly, try something completely different! "
-            "Don't keep analyzing non-existent fish - CREATE actual fish first, or CREATE fishing_net, or MOVE TO ocean. "
-            "Build foundations before attempting advanced combinations."
+            "**ADVANCED COMBINATION EXAMPLES**: "
+            "WORLD: COMBINE crystal_shard AND hammer INTO crystal_hammer "
+            "WORLD: COMBINE ancient_gear AND rope INTO mystical_rope "
+            "WORLD: COMBINE forgotten_tool AND axe INTO enhanced_axe "
+            "WORLD: COMBINE energy_core AND fire_pit INTO energy_forge "
+            "WORLD: COMBINE strange_alloy AND wooden_beam INTO reinforced_beam "
+            "WORLD: COMBINE mysterious_blueprint AND advanced_toolbox INTO master_toolkit "
+            
+            "**SMART CONDITIONAL CREATION** (avoid duplicates): "
+            "WORLD: IF HAS crafting_station THEN COMBINE crafting_station AND crystal_shard INTO enhanced_crafting_station "
+            "WORLD: IF HAS advanced_toolbox THEN EXPERIMENT WITH advanced_toolbox energy_core ancient_gear "
+            "WORLD: IF HAS shelter THEN COMBINE shelter AND energy_core INTO powered_shelter "
+            
+            "**AVOID REPETITIVE MOVEMENT**: Don't repeatedly MOVE TO the same location. "
+            "Instead: MOVE once → CREATE/ANALYZE/EXPERIMENT → MOVE to next location with purpose. "
+            "Focus on productive actions over constant movement."
         )
 
     alice = BaseAgent(
@@ -282,6 +385,43 @@ def build_default(world: WorldState):
             "CRITICAL: You must ONLY communicate through WORLD: directives. Every action must start with 'WORLD:' followed by the exact command syntax. "
             "Do NOT use conversational language. Do NOT say things like 'I will build something' - instead use 'WORLD: CREATE building_name'. "
             
+            "STARTING STRATEGY (Early Game): Since you're just beginning, focus on productive actions: "
+            "- **CRITICAL: CREATE basic tools FIRST!** Start with: hammer, axe, rope, knife, shelter "
+            "- **Stop endless analyzing!** Create tools instead of repeatedly analyzing the same 3 objects "
+            "- **Build progression:** CREATE simple tools → COMBINE into advanced tools → EXPERIMENT with results "
+            "- MOVE TO different locations: forest, river, mountain, cave, clearing "
+            "- ANALYZE objects only ONCE, then CREATE new ones "
+            "- LEARN essential skills: tool-making, exploration, crafting, building "
+            "- Only use LIST when genuinely needed - don't repeatedly check the same information "
+            
+            "**CREATION PRIORITY SEQUENCE (FOLLOW THIS ORDER):** "
+            "1. WORLD: CREATE hammer (essential foundation tool) "
+            "2. WORLD: CREATE axe (for resource gathering) "
+            "3. WORLD: CREATE rope (for construction) "
+            "4. WORLD: CREATE shelter (for survival) "
+            "5. WORLD: CREATE storage (for organization) "
+            "6. WORLD: LEARN building (essential skill) "
+            "7. WORLD: COMBINE axe AND wood INTO wooden_beam "
+            "8. WORLD: EXPERIMENT WITH storage rope shelter "
+            
+            "SKILL LEARNING PROGRESSION: "
+            "1. Start with basics: LEARN tool-making, LEARN building "
+            "2. Build on foundations: LEARN engineering, LEARN agriculture "
+            "3. Advanced skills: LEARN metallurgy, LEARN architecture "
+            "4. TEACH Eve once you have skills to share "
+            
+            "CONCRETE EXAMPLES OF VALID COMBINATIONS: "
+            "WORLD: COMBINE wood AND stone INTO hammer "
+            "WORLD: COMBINE axe AND wood INTO wooden_beam "
+            "WORLD: COMBINE clay AND water INTO wet_clay "
+            "WORLD: COMBINE shelter AND rope INTO reinforced_shelter "
+            "WORLD: COMBINE fire_pit AND stone INTO cooking_stone "
+            
+            "EXPERIMENT EXAMPLES: "
+            "WORLD: EXPERIMENT WITH crystal_shard stone fire "
+            "WORLD: EXPERIMENT WITH ancient_fragment clay water "
+            "WORLD: EXPERIMENT WITH wood metal stone "
+            
             "ADAPTIVE STRATEGY: "
             "- If EXPLORATION focus: CREATE maps/tools, MOVE TO unexplored areas, ANALYZE discoveries "
             "- If SURVIVAL focus: CREATE food_storage/water_storage, USE available resources, BUILD shelter "
@@ -294,23 +434,32 @@ def build_default(world: WorldState):
             "- During innovation surges: COMBINE objects for enhanced results "
             "- If scarcity pressure high: TRADE with Eve to share resources efficiently "
             
-            "EXACT SYNTAX REQUIRED: "
-            "WORLD: LIST (see all available objects) "
-            "WORLD: LIST skills (see your abilities) "
-            "WORLD: CREATE <specific_object_name> "
-            "WORLD: MOVE TO <specific_location_name> "
-            "WORLD: COMBINE <object1> AND <object2> INTO <result_name> "
-            "WORLD: EXPERIMENT WITH <object1> <object2> "
-            "WORLD: ANALYZE <object_name> "
-            "WORLD: TEACH <agent_name> <skill_name> "
-            "WORLD: LEARN <skill_name> FROM <agent_name> "
-            "WORLD: USE <object_name> ON <target> "
-            "WORLD: DEFINE <custom_verb> AS <command_template> "
-            "WORLD: IF HAS <object> THEN CREATE <something> "
-            "WORLD: IF location=<place> THEN <action> "
+            "**DISCOVERY MATERIALS PRIORITY**: When you see objects with 'cosmic' or 'ancient' creators: "
+            "- **CRITICAL**: crystal_shard, ancient_gear, energy_core are HIGH-VALUE discovery materials! "
+            "- **USE THESE IMMEDIATELY**: ANALYZE crystal_shard, EXPERIMENT WITH crystal_shard ancient_gear "
+            "- **IGNORE phantom objects**: Don't look for 'ancient_fragment' or 'mysterious_seed' - they don't exist "
+            "- **REAL discovery objects**: Look for objects created by 'cosmic' or 'ancient' in LIST output "
+            "- ANALYZE mysterious_blueprint, strange_alloy, forgotten_tool first "
+            "- EXPERIMENT WITH crystal_shard ancient_gear energy_core "
+            "- COMBINE discovery materials with your basic tools "
+            "- These rare materials can create breakthrough innovations! "
             
-            "BREAK LOOPS: Don't repeat failed actions! If you can't find food_storage, CREATE it first. "
-            "If teaching fails, CREATE learning_materials first. Build step by step: basic_tool → advanced_tool → complex_creation."
+            "**ADVANCED COMBINATION EXAMPLES**: "
+            "WORLD: COMBINE crystal_shard AND hammer INTO crystal_hammer "
+            "WORLD: COMBINE ancient_gear AND rope INTO mystical_rope "
+            "WORLD: COMBINE forgotten_tool AND axe INTO enhanced_axe "
+            "WORLD: COMBINE energy_core AND fire_pit INTO energy_forge "
+            "WORLD: COMBINE strange_alloy AND wooden_beam INTO reinforced_beam "
+            "WORLD: COMBINE mysterious_blueprint AND advanced_toolbox INTO master_toolkit "
+            
+            "**SMART CONDITIONAL CREATION** (avoid duplicates): "
+            "WORLD: IF HAS crafting_station THEN COMBINE crafting_station AND crystal_shard INTO enhanced_crafting_station "
+            "WORLD: IF HAS advanced_toolbox THEN EXPERIMENT WITH advanced_toolbox energy_core ancient_gear "
+            "WORLD: IF HAS shelter THEN COMBINE shelter AND energy_core INTO powered_shelter "
+            
+            "**AVOID REPETITIVE MOVEMENT**: Don't repeatedly MOVE TO the same location. "
+            "Instead: MOVE once → CREATE/ANALYZE/EXPERIMENT → MOVE to next location with purpose. "
+            "Focus on productive actions over constant movement."
         )
 
     bob = BaseAgent(

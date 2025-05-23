@@ -199,6 +199,17 @@ def execute(world, bus, speaker: str, content: str) -> List[str]:
                     rest.append(token)
             if kind is None:
                 kind = remainder[0]
+            
+            # Check for duplicate objects by same creator
+            existing_count = sum(1 for obj in world.objects.values() 
+                               if obj.get("kind") == kind and obj.get("creator") == speaker)
+            
+            if existing_count >= 3:
+                events.append(f"{speaker} already has {existing_count} {kind}s. Consider creating something different or upgrading existing ones.")
+                return events
+            elif existing_count >= 2:
+                events.append(f"{speaker} already has {existing_count} {kind}s. Consider IF statements to avoid duplicates.")
+            
             props = _kv_pairs(rest) | {"creator": speaker, "turn": world.tick}
             oid = world.add_object(kind, props)
             events.append(f"{speaker} created {kind} (id={oid})")
@@ -310,8 +321,9 @@ def execute(world, bus, speaker: str, content: str) -> List[str]:
                     obj2_name = " ".join(remainder[and_idx+1:])
                     result_name = f"combined_{obj1_name}_{obj2_name}"
                 
-                obj1_id = _find_object_by_kind(world, obj1_name, speaker)
-                obj2_id = _find_object_by_kind(world, obj2_name, speaker)
+                # Allow using any available objects, not just owned ones
+                obj1_id = _find_object_by_kind(world, obj1_name)
+                obj2_id = _find_object_by_kind(world, obj2_name)
                 
                 if obj1_id and obj2_id:
                     # Remove original objects and create combined object
@@ -333,7 +345,9 @@ def execute(world, bus, speaker: str, content: str) -> List[str]:
                         reward_msg = world.reward_innovation(speaker, "COMBINE", f"{obj1_name} + {obj2_name} = {result_name}")
                         events.append(reward_msg)
                 else:
-                    events.append(f"{speaker} cannot combine: missing objects")
+                    # Provide helpful feedback about available objects
+                    available_objects = [obj.get('kind') for obj in world.objects.values()]
+                    events.append(f"{speaker} cannot combine: {obj1_name} or {obj2_name} not found. Available: {', '.join(set(available_objects))}")
             except ValueError:
                 events.append(f"{speaker} malformed COMBINE syntax")
 
@@ -358,33 +372,67 @@ def execute(world, bus, speaker: str, content: str) -> List[str]:
 
         elif verb == "EXPERIMENT" and remainder and remainder[0].upper() == "WITH":
             materials = remainder[1:]
-            # Check if agent has materials
+            # Check if materials are available (not necessarily owned by speaker)
             available_materials = []
+            discovery_materials = []  # Track cosmic/ancient materials
             for material in materials:
-                obj_id = _find_object_by_kind(world, material, speaker)
+                obj_id = _find_object_by_kind(world, material)  # Remove speaker restriction
                 if obj_id:
                     available_materials.append(material)
+                    # Check if it's a discovery material
+                    obj = world.objects[obj_id]
+                    if obj.get("creator") in ["cosmic", "ancient"] or obj.get("rarity") in ["rare", "legendary"]:
+                        discovery_materials.append(material)
             
             if available_materials:
-                # Random chance of discovery
-                if random.random() < 0.3:  # 30% chance of discovering something
-                    discovery = f"experimental_{random.randint(1000, 9999)}"
+                # Higher success rate for discovery materials
+                base_chance = 0.4  # Base 40% chance
+                if discovery_materials:
+                    bonus_chance = len(discovery_materials) * 0.2  # +20% per discovery material
+                    success_chance = min(0.9, base_chance + bonus_chance)  # Cap at 90%
+                else:
+                    success_chance = base_chance
+                
+                if random.random() < success_chance:
+                    # Create more interesting results for discovery materials
+                    if discovery_materials:
+                        result_prefixes = ["mystical", "enhanced", "powered", "crystal", "ancient", "energy"]
+                        prefix = random.choice(result_prefixes)
+                        discovery = f"{prefix}_{random.randint(1000, 9999)}"
+                    else:
+                        discovery = f"experimental_{random.randint(1000, 9999)}"
+                    
                     discovery_props = {
                         "creator": speaker,
                         "turn": world.tick,
                         "discovered_using": available_materials
                     }
+                    
+                    # Add special properties for discovery material experiments
+                    if discovery_materials:
+                        discovery_props["enhanced"] = True
+                        discovery_props["discovery_level"] = len(discovery_materials)
+                        discovery_props["rarity"] = "enhanced"
+                    
                     new_id = world.add_object(discovery, discovery_props)
-                    events.append(f"{speaker} experimented with {', '.join(available_materials)} and discovered {discovery} (id={new_id})")
+                    if discovery_materials:
+                        events.append(f"{speaker} experimented with {', '.join(available_materials)} and discovered {discovery} (id={new_id}) - Enhanced by discovery materials!")
+                    else:
+                        events.append(f"{speaker} experimented with {', '.join(available_materials)} and discovered {discovery} (id={new_id})")
                     
                     # Innovation reward for experimenting
                     if hasattr(world, 'reward_innovation'):
                         reward_msg = world.reward_innovation(speaker, "EXPERIMENT", f"Discovered {discovery} using {', '.join(available_materials)}")
                         events.append(reward_msg)
                 else:
-                    events.append(f"{speaker} experimented with {', '.join(available_materials)} but found nothing new")
+                    if discovery_materials:
+                        events.append(f"{speaker} experimented with {', '.join(available_materials)} but the discovery materials need more time to reveal their secrets")
+                    else:
+                        events.append(f"{speaker} experimented with {', '.join(available_materials)} but found nothing new")
             else:
-                events.append(f"{speaker} cannot experiment: no available materials")
+                # Provide helpful feedback about available materials
+                available_objects = [obj.get('kind') for obj in world.objects.values()]
+                events.append(f"{speaker} cannot experiment: materials not available. Try using: {', '.join(set(available_objects))}")
 
         elif verb == "USE" and remainder:
             tool = remainder[0]
