@@ -34,7 +34,8 @@ _PATTERN = re.compile(r"^WORLD:\s*(.+)", re.IGNORECASE)
 CORE_VERBS = {
     "CREATE", "MOVE", "SET", "BREED", "DEFINE", "HELP",
     "TEACH", "LEARN", "TRADE", "DESTROY", "COMBINE", 
-    "ANALYZE", "EXPERIMENT", "USE", "MODIFY", "INSPECT", "IF"
+    "ANALYZE", "EXPERIMENT", "USE", "MODIFY", "INSPECT", "IF",
+    "EXPLORE", "GATHER", "EXAMINE", "LIST"
 }
 
 
@@ -478,6 +479,66 @@ def execute(world, bus, speaker: str, content: str) -> List[str]:
             else:
                 events.append(f"{speaker} cannot inspect {target} (not found)")
 
+        elif verb == "EXPLORE" and remainder:
+            location = " ".join(remainder) if remainder else "current area"
+            agent_rec = world.agents.setdefault(speaker, {})
+            current_location = agent_rec.get("location", "unknown")
+            
+            # Simple exploration that might reveal resources or objects
+            if random.random() < 0.3:  # 30% chance to find something
+                findings = ["interesting rock formations", "useful plants", "clear water source", "sheltered area", "rich soil"]
+                finding = random.choice(findings)
+                events.append(f"{speaker} explored {location} and discovered {finding}")
+                _add_agent_knowledge(world, speaker, f"exploration_of_{location}", finding)
+            else:
+                events.append(f"{speaker} explored {location} but found nothing new")
+
+        elif verb == "GATHER" and remainder:
+            resource = " ".join(remainder)
+            # Simple gathering that creates basic resources
+            basic_resources = ["wood", "stone", "clay", "berries", "herbs", "water"]
+            if resource.lower() in basic_resources or any(res in resource.lower() for res in basic_resources):
+                # Create a simple resource object
+                props = {"creator": speaker, "turn": world.tick, "gathered": True}
+                oid = world.add_object(resource, props)
+                events.append(f"{speaker} gathered {resource} (id={oid})")
+            else:
+                events.append(f"{speaker} tried to gather {resource} but couldn't find any")
+
+        elif verb == "EXAMINE" and remainder:
+            target = " ".join(remainder)
+            # Similar to ANALYZE but more detailed for environmental features
+            obj_id = _find_object_by_kind(world, target)
+            if obj_id and obj_id in world.objects:
+                obj = world.objects[obj_id]
+                properties = len(obj.keys())
+                creator = obj.get("creator", "unknown")
+                events.append(f"{speaker} examined {target}: Object {target}: kind={target}, creator={creator}, properties={properties}")
+                _add_agent_knowledge(world, speaker, f"examination_of_{target}", f"Object {target}: kind={target}, creator={creator}, properties={properties}")
+            else:
+                # Examine environmental features
+                features = ["cave walls", "rock formations", "mineral deposits", "water flow", "plant growth", "soil composition"]
+                if any(feature in target.lower() for feature in features):
+                    events.append(f"{speaker} examined {target} and noted its characteristics")
+                    _add_agent_knowledge(world, speaker, f"examination_of_{target}", f"Detailed study of {target}")
+                else:
+                    events.append(f"{speaker} cannot examine {target} (not found)")
+
+        elif verb == "LIST" and remainder:
+            category = remainder[0].lower() if remainder else "objects"
+            if category == "objects":
+                object_kinds = [obj.get('kind', 'unknown') for obj in world.objects.values()]
+                unique_kinds = list(set(object_kinds))
+                events.append(f"{speaker} listed objects: {', '.join(unique_kinds)}")
+            elif category == "skills":
+                agent_skills = _get_agent_skills(world, speaker)
+                events.append(f"{speaker} listed skills: {', '.join(agent_skills) if agent_skills else 'none'}")
+            elif category == "agents":
+                agent_names = list(world.agents.keys())
+                events.append(f"{speaker} listed agents: {', '.join(agent_names)}")
+            else:
+                events.append(f"{speaker} cannot list {category} (unknown category)")
+
         elif verb == "BREED" and len(remainder) >= 2 and remainder[0].upper() == "WITH":
             partner = remainder[1]
             payload = {
@@ -495,31 +556,6 @@ def execute(world, bus, speaker: str, content: str) -> List[str]:
                 except RuntimeError:
                     pass
             events.append(f"{speaker} asked to breed with {partner}")
-
-        elif verb == "LIST":
-            if len(remainder) == 0:
-                # List all objects
-                if world.objects:
-                    obj_list = []
-                    for obj_id, obj in world.objects.items():
-                        obj_list.append(f"{obj.get('kind', 'unknown')} (id={obj_id[:8]}, by {obj.get('creator', 'unknown')})")
-                    events.append(f"{speaker} sees available objects: {', '.join(obj_list)}")
-                else:
-                    events.append(f"{speaker} sees no objects in the world yet")
-            else:
-                target = remainder[0].lower()
-                if target == "skills":
-                    agent_data = world.agents.get(speaker, {})
-                    skills = agent_data.get('skills', [])
-                    if skills:
-                        events.append(f"{speaker} knows skills: {', '.join(skills)}")
-                    else:
-                        events.append(f"{speaker} has no skills yet")
-                elif target == "agents":
-                    agents = list(world.agents.keys())
-                    events.append(f"{speaker} sees agents: {', '.join(agents)}")
-                else:
-                    events.append(f"{speaker} cannot list '{target}' (try: LIST, LIST skills, LIST agents)")
 
         else:
             events.append(f"{speaker} issued unknown directive: {verb}")

@@ -115,6 +115,13 @@ class MemoryStore:
         Summarise long content (> _LARGE chars) then add.
         Skip if already stored (hash collision check).
         """
+        # Validate and sanitize input
+        if not text or not isinstance(text, str):
+            return
+        
+        # Clean the text to prevent API errors
+        text = self._sanitize_text(text)
+        
         h = _hash(text)
         if self.contains(h):
             return
@@ -126,8 +133,34 @@ class MemoryStore:
         except Exception as e:
             print(f"[memory] Error adding summarized document for {agent}: {str(e)}")
 
+    def _sanitize_text(self, text: str) -> str:
+        """Sanitize text to prevent API errors."""
+        if not text:
+            return ""
+        
+        # Remove null bytes and other problematic characters
+        text = text.replace('\x00', '').replace('\r', ' ').replace('\n\n\n', '\n\n')
+        
+        # Limit length to prevent excessive API costs
+        if len(text) > 10000:
+            text = text[:10000] + "..."
+        
+        # Ensure text is valid UTF-8
+        try:
+            text = text.encode('utf-8', errors='ignore').decode('utf-8')
+        except UnicodeError:
+            text = repr(text)  # Fallback to repr if all else fails
+        
+        return text.strip()
+
     async def _summarise(self, text: str) -> str:
         """Summarize long text using OpenAI API."""
+        # Sanitize input before sending to API
+        text = self._sanitize_text(text)
+        
+        if not text:
+            return "Empty content"
+            
         prompt = ("Condense the following message to <=120 words, "
                   "keeping names and key facts:\n\n" + text[:4000])
         try:
