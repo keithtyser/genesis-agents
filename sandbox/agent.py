@@ -67,12 +67,12 @@ class BaseAgent:
         self._last_prompt = prompt
 
         # 3) CALL LLM
-        reply_text = await llm.chat(
-            prompt,
-            temperature=self.temperature,
-            max_tokens=256,
-        )
-        self._last_reply = reply_text
+        try:
+            reply_text = await llm.chat(prompt, temperature=self.temperature)
+            self._last_reply = reply_text
+        except Exception as e:
+            reply_text = f"[ERROR: {str(e)}]"
+            self._last_reply = reply_text
 
         # 4) FORM MESSAGE OBJECT
         msg: Message = {
